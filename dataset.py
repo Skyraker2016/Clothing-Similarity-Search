@@ -1,120 +1,142 @@
+import os
+import torch
+import pandas as pd
+from skimage import io, transform
 import numpy as np
-import cv2
 import matplotlib.pyplot as plt
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms, utils
 
-class Dataset:
-    # resize_size: shape after resize
-    def __init__(self, resize_size=256):
-        self.data = {}
-        self.SIZE = resize_size
-        # Category and Attribute Prediction Benchmark
-        path = "./DeepFashion/Category and Attribute Prediction Benchmark/"
-        with open(path+"Anno/list_bbox.txt") as file:
-            number = int(file.readline())
-            file.readline()
-            for _ in range(number):
-                tmp = file.readline().split()
-                self.data[path+tmp[0]] = {'bbox': [int(tmp[1]), int(tmp[2]), int(tmp[3]), int(tmp[4])], 'type': 0}
-                
-        cate_dict = {}
-        with open(path+"Anno/list_category_cloth.txt") as file:
-            number = int(file.readline())
-            file.readline()
-            for i in range(number):
-                tmp = file.readline().split()
-                cate_dict[i+1] = [tmp[0], int(tmp[1])]
-                
-        with open(path+"Anno/list_category_img.txt") as file:
-            number = int(file.readline())
-            file.readline()
-            for _ in range(number):
-                tmp = file.readline().split()
-                self.data[path+tmp[0]]['type'] = cate_dict[int(tmp[1])][1]
+# Ignore warnings
+import warnings
+warnings.filterwarnings("ignore")
 
-        print(path + ": "+str(number))
+class DeepFashionDataset(Dataset):
+    def __init__(self, txt_file, root_dir, transform=None):
+        self.data = []
+        with open(root_dir + "Anno/" + txt_file) as file:
+            num = int(file.readline())
+            file.readline()
+            for _ in range(num):
+                tmp = file.readline().split()
+                self.data.append({'path': root_dir+tmp[0], 'bbox': np.array([int(tmp[3]), int(tmp[4]), int(tmp[5]), int(tmp[6])]), 'type': int(tmp[1])-1})
         
-        # Consumer-to-shop Clothes Retrieval Benchmark
-        path = "./DeepFashion/Consumer-to-shop Clothes Retrieval Benchmark/"
-        with open(path+"Anno/list_bbox_consumer2shop.txt") as file:
-            number = int(file.readline())
-            file.readline()
-            for _ in range(number):
-                tmp = file.readline().split()
-                self.data[path+tmp[0]] = {'bbox': [int(tmp[3]), int(tmp[4]), int(tmp[5]), int(tmp[6])], 'type': tmp[1]}
+        self.root_dir = root_dir
+        self.transform = transform
 
-        print(path + ": "+str(number))
+    def __len__(self):
+        return len(self.data)
 
-        # Fashion Landmark Detection Benchmark
-        path = "./DeepFashion/Fashion Landmark Detection Benchmark/"
-        with open(path+"Anno/list_bbox.txt") as file:
-            number = int(file.readline())
-            file.readline()
-            for _ in range(number):
-                tmp = file.readline().split()
-                self.data[path+tmp[0]] = {'bbox': [int(tmp[1]), int(tmp[2]), int(tmp[3]), int(tmp[4])], 'type': 0}
+    def __getitem__(self, idx):
+        img_name = self.data[idx]['path']
+        image = io.imread(img_name)
+        bbox = self.data[idx]['bbox']
+        cloth_type = self.data[idx]['type']
+        sample = {'image': image, 'bbox': bbox, 'type': cloth_type}
 
-        with open(path+"Anno/list_joints.txt") as file:
-            number = int(file.readline())
-            file.readline()
-            for _ in range(number):
-                tmp = file.readline().split()
-                self.data[path+tmp[0]]['type'] = int(tmp[1])        
+        if self.transform:
+            sample = self.transform(sample)
 
-        print(path + ": "+str(number))
-
-        # In-shop Clothes Retrieval Benchmark
-        path = "./DeepFashion/In-shop Clothes Retrieval Benchmark/"
-        with open(path+"Anno/list_bbox_inshop.txt") as file:
-            number = int(file.readline())
-            file.readline()
-            for _ in range(number):
-                tmp = file.readline().split()
-                self.data[path+tmp[0]] = {'bbox': [int(tmp[3]), int(tmp[4]), int(tmp[5]), int(tmp[6])], 'type': tmp[1]}
-                
-        print(path + ": "+str(number))
-
-        self.data_size = len(self.data)
+        return sample
 
 
-    def bbox_resize(self, bbox, origin, new):
-        bb = [0,0,0,0]
-        bb[0] = int(bbox[0]/origin[1]*new[1])
-        bb[2] = int(bbox[2]/origin[1]*new[1])
-        bb[1] = int(bbox[1]/origin[0]*new[0])
-        bb[3] = int(bbox[3]/origin[0]*new[0])
-        return bb
+type_name = ["upper body", "lower body", "full body"]
+def show_bbox(image, bbox, type):
+    plt.imshow(image)
+    plt.gca().add_patch(plt.Rectangle((bbox[0], bbox[1]), bbox[2] - bbox[0],bbox[3] - bbox[1],  fill=False, edgecolor='r', linewidth=1))
+    plt.text(bbox[0], bbox[1], type_name[type], fontsize=10, style='oblique', ha='center',va='top',wrap=True)
 
-    # imgs: a list of images index. return a list with dict ('path': img_path(string), 'bbox': bbox(list), 'type': cloth_type(int), 'img': img(matrix))
-    def get_data(self, imgs):
-        key_list = list(np.array(list(self.data.keys()))[np.array(imgs)])
-        result = [{'path': None, 'bbox': None, 'type': None, 'img': None} for i in range(len(imgs))]
-        i = 0
-        for k in key_list:
-            img = cv2.imread(k)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  
-            result[i]['type'] = self.data[k]['type']
-            result[i]['path'] = k
-            result[i]['bbox'] = self.bbox_resize(self.data[k]['bbox'], img.shape, (self.SIZE, self.SIZE, 3))
-            result[i]['img'] = cv2.resize(img,(256,256))
-            i+=1
-        return result
+class Rescale(object):
+    """Rescale the image in a sample to a given size.
+
+    Args:
+        output_size (tuple or int): Desired output size. If tuple, output is
+            matched to output_size. If int, smaller of image edges is matched
+            to output_size keeping aspect ratio the same.
+    """
+
+    def __init__(self, output_size):
+        assert isinstance(output_size, (int, tuple))
+        self.output_size = output_size
+
+    def __call__(self, sample):
+        image, bbox, cloth_type = sample['image'], sample['bbox'], sample['type']
+
+        h, w = image.shape[:2]
+        if isinstance(self.output_size, int):
+            if h > w:
+                new_h, new_w = self.output_size * h / w, self.output_size
+            else:
+                new_h, new_w = self.output_size, self.output_size * w / h
+        else:
+            new_h, new_w = self.output_size
+
+        new_h, new_w = int(new_h), int(new_w)
+
+        img = transform.resize(image, (new_h, new_w))
+
+        # h and w are swapped for landmarks because for images,
+        # x and y axes are axis 1 and 0 respectively
+        bbox = bbox * [new_w / w, new_h / h, new_w / w, new_h / h]
+        bbox = bbox.astype('int32')
+
+        return {'image': img, 'bbox': bbox, "type": cloth_type}
 
 
-    # img_item: a list of images dict, came from 'get_data'; subplot_size: plot shape
-    def show_data(self, img_item, subplot_size):
-        i=1
-        for item in img_item:
-            img = item['img']
-            cv2.rectangle(img, (item['bbox'][0], item['bbox'][1]), (item['bbox'][2], item['bbox'][3]), (0,255,0), 2)
-            cv2.putText(img, str(item['type']), (item['bbox'][0]+5, item['bbox'][1]+20), cv2.FONT_HERSHEY_COMPLEX,1,(0,0,0) ,2)
-            plt.subplot(subplot_size[0],subplot_size[1],i)
-            i+=1
-            plt.imshow(img)
-            plt.axis("off")
-        plt.show()
+class RandomCrop(object):
+    """Crop randomly the image in a sample.
+
+    Args:
+        output_size (tuple or int): Desired output size. If int, square crop
+            is made.
+    """
+
+    def __init__(self, output_size):
+        assert isinstance(output_size, (int, tuple))
+        if isinstance(output_size, int):
+            self.output_size = (output_size, output_size)
+        else:
+            assert len(output_size) == 2
+            self.output_size = output_size
+
+    def __call__(self, sample):
+        image, bbox, cloth_type = sample['image'], sample['bbox'], sample['type']
+
+        h, w = image.shape[:2]
+        new_h, new_w = self.output_size
+
+        top = np.random.randint(0, h - new_h)
+        left = np.random.randint(0, w - new_w)
+
+        image = image[top: top + new_h,
+                      left: left + new_w]
+
+        bbox = bbox - [left, top, left, top]
+        bbox[np.where(bbox<0)] = 0
+        if (bbox[0]>=self.output_size[0]):
+            bbox[0] = self.output_size[0]-1
+        if (bbox[1]>=self.output_size[1]):
+            bbox[1] = self.output_size[1]-1
+        if (bbox[2]>=self.output_size[0]):
+            bbox[2] = self.output_size[0]-1
+        if (bbox[3]>=self.output_size[1]):
+            bbox[3] = self.output_size[1]-1
+        
+
+        return {'image': image, 'bbox': bbox, "type": cloth_type}
 
 
-if __name__ == "__main__":
-    dataset = Dataset()
-    print(dataset.get_data([1,2,3]))
-    dataset.show_data(dataset.get_data(np.random.randint(0,dataset.data_size,(25))), [5, 5])
+class ToTensor(object):
+    """Convert ndarrays in sample to Tensors."""
+
+    def __call__(self, sample):
+        image, bbox, cloth_type = sample['image'], sample['bbox'], sample['type']
+
+        # swap color axis because
+        # numpy image: H x W x C
+        # torch image: C X H X W
+        image = image.transpose((2, 0, 1))
+        return {'image': torch.from_numpy(image),
+                'bbox': torch.from_numpy(bbox),
+                'type': cloth_type}
+
