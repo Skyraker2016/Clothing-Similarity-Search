@@ -11,17 +11,79 @@ from torchvision import transforms, utils
 import warnings
 warnings.filterwarnings("ignore")
 
+
+def In_shop_reader():
+    data = []
+    root_dir = './DeepFashion/In-shop Clothes Retrieval Benchmark/' 
+    with open(root_dir+'Anno/list_bbox_inshop.txt') as file:
+        num = int(file.readline())
+        file.readline()
+        for _ in range(num):
+            tmp = file.readline().split()
+            data.append({'path': root_dir+tmp[0], 'bbox': np.array([int(tmp[-4]), int(tmp[-3]), int(tmp[-2]), int(tmp[-1])]), 'type': int(tmp[1])-1})
+    return data, root_dir
+
+def Category_Attribute_reader():
+    data = []
+    cloth_label = []
+    root_dir = './DeepFashion/Category and Attribute Prediction Benchmark/' 
+    with open(root_dir+'Anno/list_category_cloth.txt') as file:
+        num = int(file.readline())
+        file.readline()
+        for _ in range(num):
+            cloth_label.append(int(file.readline().split()[-1]))
+
+    with open(root_dir+'Anno/list_bbox.txt') as file:
+        num = int(file.readline())
+        file.readline()
+        for _ in range(num):
+            tmp = file.readline().split()
+            data.append({'path': root_dir+tmp[0], 'bbox': np.array([int(tmp[-4]), int(tmp[-3]), int(tmp[-2]), int(tmp[-1])]), 'type': 0})
+
+    with open(root_dir+'Anno/list_category_img.txt') as file:
+        num = int(file.readline())
+        file.readline()
+        for i in range(num):
+            tmp = file.readline().split()
+            data[i]['type'] = cloth_label[int(tmp[-1])]-1
+      
+
+    return data, root_dir
+
+def Consumer_to_shop_reader():
+    data = []
+    root_dir = './DeepFashion/Consumer-to-shop Clothes Retrieval Benchmark/'
+    with open(root_dir+'Anno/list_bbox_consumer2shop.txt') as file:
+        num = int(file.readline())
+        file.readline()
+        for _ in range(num):
+            tmp = file.readline().split()
+            data.append({'path': root_dir+tmp[0], 'bbox': np.array([int(tmp[-4]), int(tmp[-3]), int(tmp[-2]), int(tmp[-1])]), 'type': int(tmp[1])-1})
+    return data, root_dir
+
+def Landmark_Detection_reader():
+    data = []
+    root_dir = './DeepFashion/Fashion Landmark Detection Benchmark/' 
+
+    with open(root_dir+'Anno/list_bbox.txt') as file:
+        num = int(file.readline())
+        file.readline()
+        for _ in range(num):
+            tmp = file.readline().split()
+            data.append({'path': root_dir+tmp[0], 'bbox': np.array([int(tmp[-4]), int(tmp[-3]), int(tmp[-2]), int(tmp[-1])]), 'type': 0})
+
+    with open(root_dir+'Anno/list_joints.txt') as file:
+        num = int(file.readline())
+        file.readline()
+        for i in range(num):
+            tmp = file.readline().split()
+            data[i]['type'] = int(tmp[1]) - 1
+
+    return data, root_dir
+
 class DeepFashionDataset(Dataset):
-    def __init__(self, txt_file, root_dir, transform=None):
-        self.data = []
-        with open(root_dir + "Anno/" + txt_file) as file:
-            num = int(file.readline())
-            file.readline()
-            for _ in range(num):
-                tmp = file.readline().split()
-                self.data.append({'path': root_dir+tmp[0], 'bbox': np.array([int(tmp[-4]), int(tmp[-3]), int(tmp[-2]), int(tmp[-1])]), 'type': int(tmp[1])-1})
-        
-        self.root_dir = root_dir
+    def __init__(self, reader, transform=None):
+        self.data, self.root_dir = reader()
         self.transform = transform
 
     def __len__(self):
