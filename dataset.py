@@ -19,7 +19,7 @@ class DeepFashionDataset(Dataset):
             file.readline()
             for _ in range(num):
                 tmp = file.readline().split()
-                self.data.append({'path': root_dir+tmp[0], 'bbox': np.array([int(tmp[3]), int(tmp[4]), int(tmp[5]), int(tmp[6])]), 'type': int(tmp[1])-1})
+                self.data.append({'path': root_dir+tmp[0], 'bbox': np.array([int(tmp[-4]), int(tmp[-3]), int(tmp[-2]), int(tmp[-1])]), 'type': int(tmp[1])-1})
         
         self.root_dir = root_dir
         self.transform = transform
